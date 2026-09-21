@@ -26,8 +26,9 @@ public:
 		    {"91 E1 03 15 AA ? ? ? 95 ? ? ? 36 ? ? ? B9 ? ? ? 52 ? ? ? B0 ? ? ? F9 09 01 09 0B ? ? ? 71 ? ? ? 1A ? ? ? 13 ? ? ? 12 08 01 09 4B ? ? ? 52 ? ? ? F8 1F 20 03 D5 08 29 29 9B ? ? ? B9 ? ? ? 72 ? ? ? 54 ? ? ? F9", -7},
 		};
 
-		// Offsets tried, in order, from the scan hit.
-		static constexpr intptr_t Deltas[] = {0x10, 0, -0x10, 0x20, -0x20};
+		// The scan resolves to base + 0x2076B8F8; the other dumper used
+		// base + 0x2076B908. Try +0x10 first. If it fails, try 0 and -0x10.
+		constexpr intptr_t kAdjust = 0x10;
 
 		for (const auto& P : Patterns)
 		{
@@ -57,27 +58,28 @@ public:
 
 				GLogger.FmtWrite(ELogLevel::Info, "GetGObjects: Testing match (0x{:X}) -> 0x{:X}\n", GMemory->GetUnrealModule().AddressToOffset(Match), Match);
 				uintptr_t ADRP = Utils::Arm64::Find_ADRP_Final_Address(Insns, Match);
-				if (!ADRP)
-					continue;
-
-				GLogger.FmtWrite(ELogLevel::Info, "GetGObjects: Scan hit 0x{:X}\n", ADRP);
-				DumpBytes(ADRP);
-
-				for (intptr_t Delta : Deltas)
+				if (ADRP)
 				{
-					const uintptr_t Candidate = ADRP + Delta;
-					if (LooksLikeObjectArray(Candidate))
+					// Log 0x80 bytes around the hit so the layout can be read from the log.
+					uint8_t Dump[0x80] = {};
+					const uintptr_t DumpStart = ADRP - 0x20;
+					GMemory->ReadBytes(DumpStart, Dump, sizeof(Dump));
+					GLogger.FmtWrite(ELogLevel::Info, "GetGObjects: hit 0x{:X}, dumping from hit-0x20\n", ADRP);
+					for (size_t i = 0; i < sizeof(Dump); i += 8)
 					{
-						GLogger.FmtWrite(ELogLevel::Info, "GetGObjects: Accepted 0x{:X} (hit {}0x{:X})\n", Candidate, Delta < 0 ? "-" : "+", (unsigned)(Delta < 0 ? -Delta : Delta));
-						return Candidate;
+						GLogger.FmtWrite(ELogLevel::Info,
+						    "GetGObjects: 0x{:X}: {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X}\n",
+						    DumpStart + i,
+						    (unsigned)Dump[i], (unsigned)Dump[i + 1], (unsigned)Dump[i + 2], (unsigned)Dump[i + 3],
+						    (unsigned)Dump[i + 4], (unsigned)Dump[i + 5], (unsigned)Dump[i + 6], (unsigned)Dump[i + 7]);
 					}
-				}
 
-				GLogger.FmtWrite(ELogLevel::Warn, "GetGObjects: No offset near 0x{:X} looked like an object array (empty array, encrypted, or wrong address).\n", ADRP);
+					GLogger.FmtWrite(ELogLevel::Info, "GetGObjects: Returning 0x{:X} (hit + 0x{:X})\n", ADRP + kAdjust, (unsigned)kAdjust);
+					return ADRP + kAdjust;
+				}
 			}
 		}
 
-		// Returning 0 lets MobileDumper-7 fall back to UEAnalyzerKitty.
 		return 0;
 	}
 
@@ -133,64 +135,6 @@ public:
 		for (int32_t i = 0; i < Len; i++)
 		{
 			Data[i] ^= FinalKey;
-		}
-	}
-
-private:
-	static bool IsPtr(uintptr_t V)
-	{
-		V &= 0x00FFFFFFFFFFFFFFull; // ignore the top tag byte
-		return V > 0x10000 && V < 0x0001000000000000ull;
-	}
-
-	// True if Addr holds something shaped like a chunked object array:
-	// a pointer field -> chunk table -> chunk -> first UObject -> vtable,
-	// plus an int32 that looks like an element count.
-	static bool LooksLikeObjectArray(uintptr_t Addr)
-	{
-		for (uintptr_t Off = 0; Off <= 0x40; Off += 8)
-		{
-			uintptr_t Table = GMemory->Read<uintptr_t>(Addr + Off);
-			if (!IsPtr(Table))
-				continue;
-
-			uintptr_t Chunk = GMemory->Read<uintptr_t>(Table);
-			if (!IsPtr(Chunk))
-				continue;
-
-			uintptr_t Obj = GMemory->Read<uintptr_t>(Chunk);
-			if (!IsPtr(Obj))
-				continue;
-
-			uintptr_t Vtbl = GMemory->Read<uintptr_t>(Obj);
-			if (!IsPtr(Vtbl))
-				continue;
-
-			for (uintptr_t C = 0; C <= 0x40; C += 4)
-			{
-				int32_t N = GMemory->Read<int32_t>(Addr + C);
-				if (N > 1000 && N < 4000000)
-				{
-					GLogger.FmtWrite(ELogLevel::Info, "GetGObjects: 0x{:X} -> table at +0x{:X}, count {} at +0x{:X}\n", Addr, (unsigned)Off, N, (unsigned)C);
-					return true;
-				}
-			}
-		}
-		return false;
-	}
-
-	static void DumpBytes(uintptr_t Hit)
-	{
-		uint8_t Dump[0x80] = {};
-		const uintptr_t Start = Hit - 0x20;
-		GMemory->ReadBytes(Start, Dump, sizeof(Dump));
-		for (size_t i = 0; i < sizeof(Dump); i += 8)
-		{
-			GLogger.FmtWrite(ELogLevel::Info,
-			    "GetGObjects: 0x{:X}: {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X}\n",
-			    Start + i,
-			    (unsigned)Dump[i], (unsigned)Dump[i + 1], (unsigned)Dump[i + 2], (unsigned)Dump[i + 3],
-			    (unsigned)Dump[i + 4], (unsigned)Dump[i + 5], (unsigned)Dump[i + 6], (unsigned)Dump[i + 7]);
 		}
 	}
 };
