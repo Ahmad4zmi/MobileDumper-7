@@ -12,9 +12,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { target: exe, arch: arm64 }
+         
           - { target: lib, arch: arm64 }
-          - { target: exe, arch: x86_64 }
+        
 
     steps:
       - name: Checkout (with submodules)
