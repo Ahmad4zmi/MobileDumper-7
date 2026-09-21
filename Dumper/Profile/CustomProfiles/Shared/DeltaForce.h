@@ -12,27 +12,61 @@ public:
 		return {"com.proxima.dfm", "com.garena.game.df", "com.tencent.tmgp.dfm"};
 	}
 
-	// Pattern scan for GObjects (patterns from the old AndUEDumper profile).
-	// If this returns 0, MobileDumper-7 falls back to UEAnalyzerKitty.
 	uintptr_t GetGObjects() const override
 	{
-		static const std::pair<const char*, int> patterns[] = {
-			{"91 E1 03 14 AA ? ? ? 95 ? ? ? 36 ? ? ? B9", -7},
-			{"91 F6 03 01 AA E1 03 14 AA ? ? ? 39", -7},
-			{"91 E1 03 15 AA ? ? ? 95 ? ? ? 36 ? ? ? B9 ? ? ? 52 ? ? ? B0 ? ? ? F9 09 01 09 0B ? ? ? 71 ? ? ? 1A ? ? ? 13 ? ? ? 12 08 01 09 4B ? ? ? 52 ? ? ? F8 1F 20 03 D5 08 29 29 9B ? ? ? B9 ? ? ? 72 ? ? ? 54 ? ? ? F9", -7},
+		struct PatternInfo
+		{
+			const char* Pattern;
+			int Step;
 		};
 
-		// Test knob: if the dumper rejects the result, try +0x10 or -0x10.
+		// Step -7 lands on the ADRP that precedes the ADD these patterns end in.
+		static constexpr PatternInfo Patterns[] = {
+		    {"91 E1 03 14 AA ? ? ? 95 ? ? ? 36 ? ? ? B9", -7},
+		    {"91 F6 03 01 AA E1 03 14 AA ? ? ? 39", -7},
+		    {"91 E1 03 15 AA ? ? ? 95 ? ? ? 36 ? ? ? B9 ? ? ? 52 ? ? ? B0 ? ? ? F9 09 01 09 0B ? ? ? 71 ? ? ? 1A ? ? ? 13 ? ? ? 12 08 01 09 4B ? ? ? 52 ? ? ? F8 1F 20 03 D5 08 29 29 9B ? ? ? B9 ? ? ? 72 ? ? ? 54 ? ? ? F9", -7},
+		};
+
+		// Test knob: if the dumper finds the address but the layout fails,
+		// try 0x10 or -0x10 here.
 		constexpr intptr_t kAdjust = 0;
 
-		PATTERN_MAP_TYPE map_type = isEmulator() ? PATTERN_MAP_TYPE::ANY_R : PATTERN_MAP_TYPE::ANY_X;
-
-		for (const auto& p : patterns)
+		for (const auto& P : Patterns)
 		{
-			uintptr_t addr = Arm64::DecodeADRL(findIdaPattern(map_type, p.first, p.second));
-			if (addr != 0)
-				return addr + kAdjust;
+			std::vector<uintptr_t> Matches;
+
+			for (const auto& Segment : GMemory->GetUnrealModule().GetSegments())
+			{
+				if (!Segment.IsValid() || !Segment.IsReadable() || !Segment.IsExecutable())
+					continue;
+
+				auto TempMatches = GMemory->FindAllPatternInRange(Segment.GetStart(), Segment.GetSize(), P.Pattern, P.Step);
+				if (!TempMatches.empty())
+				{
+					Matches.insert(Matches.end(), TempMatches.begin(), TempMatches.end());
+				}
+
+				if (Matches.size() >= 3)
+					break;
+			}
+
+			GLogger.FmtWrite(ELogLevel::Info, "GetGObjects: Found {} matches for pattern.\n", Matches.size());
+
+			for (const auto& Match : Matches)
+			{
+				std::vector<uint32> Insns(10, 0);
+				GMemory->ReadBytes(Match, Insns.data(), Insns.size() * sizeof(uint32));
+
+				GLogger.FmtWrite(ELogLevel::Info, "GetGObjects: Testing match (0x{:X}) -> 0x{:X}\n", GMemory->GetUnrealModule().AddressToOffset(Match), Match);
+				uintptr_t ADRP = Utils::Arm64::Find_ADRP_Final_Address(Insns, Match);
+				if (ADRP)
+				{
+					GLogger.FmtWrite(ELogLevel::Info, "GetGObjects: Found GObjects ADRP 0x{:X}\n", ADRP + kAdjust);
+					return ADRP + kAdjust;
+				}
+			}
 		}
+
 		return 0;
 	}
 
@@ -90,9 +124,4 @@ public:
 			Data[i] ^= FinalKey;
 		}
 	}
-
-	/*void OverrideSettings(FSettings& Settings) const override
-	{
-	    Settings.EngineCore.bEnableEncryptedObjectPropertySupport = true;
-	}*/
 };
