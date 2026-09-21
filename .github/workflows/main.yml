@@ -1,0 +1,51 @@
+name: Build Android
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { target: exe, arch: arm64 }
+          - { target: lib, arch: arm64 }
+          - { target: exe, arch: x86_64 }
+
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Point build at the preinstalled NDK
+        run: |
+          echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          chmod +x build.sh
+          ./build.sh --platform android --target ${{ matrix.target }} --build release --arch ${{ matrix.arch }}
+
+      - name: Collect outputs
+        run: |
+          mkdir -p dist
+          find . -path ./libs -prune -o -type f \
+            \( -name 'MobileDumper7' -o -name 'MobileDumper-7' -o -name 'libMobileDumper*.so' \) \
+            -print -exec cp {} dist/ \;
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MobileDumper-7-android-${{ matrix.target }}-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
