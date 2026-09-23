@@ -1,4 +1,16 @@
-void OverrideDecryptCallbacks(FDecryptCallbacks& Callbacks) const override
+#pragma once
+
+#include "../../IProfile.h"
+
+class MyGameProfile : public IProfile
+{
+public:
+    std::vector<std::string> GetSupportedGames() const override
+    {
+        return {"com.epicgames.fortnite"};
+    }
+
+    void OverrideDecryptCallbacks(FDecryptCallbacks& Callbacks) const override
 {
 	Callbacks.ChunkedObjects.Objects = [](uintptr_t Value, uintptr_t /* Optional Address */)
 	{
@@ -10,3 +22,4 @@ void OverrideDecryptCallbacks(FDecryptCallbacks& Callbacks) const override
 		return -1225621317 * Value - 106502534;
 	};
 }
+};
