@@ -55,6 +55,7 @@ std::vector<std::shared_ptr<IProfile>>& GetUECustomProfiles()
 		UECustomProfiles.push_back(std::make_shared<PUBGProfile>());
 		UECustomProfiles.push_back(std::make_shared<DeltaForceProfile>());
 		UECustomProfiles.push_back(std::make_shared<ValorantProfile>());
+		UECustomProfiles.push_back(std::make_shared<FortniteProfile>());
 	}
 
 	return UECustomProfiles;
