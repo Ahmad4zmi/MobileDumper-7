@@ -2,7 +2,7 @@
 
 #include "../../IProfile.h"
 
-class MyGameProfile : public IProfile
+class FortniteProfile : public IProfile
 {
 public:
     std::vector<std::string> GetSupportedGames() const override
