@@ -45,6 +45,7 @@
 #include "Profile/CustomProfiles/Shared/PUBG.h"
 #include "Profile/CustomProfiles/Shared/DeltaForce.h"
 #include "Profile/CustomProfiles/Shared/Valorant.h"
+#include "Profile/CustomProfiles/Shared/Fortnite.h"
 
 inline std::vector<std::shared_ptr<IProfile>> UECustomProfiles;
 
