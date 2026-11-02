@@ -59,7 +59,7 @@ public:
 		return 0;
 	}
 
-	bool ResolveGNamesLayout(uintptr_t NamesPtr, std::unique_ptr<INamesLayout>& Out) const override
+	bool ResolveGNamesLayout(uintptr_t NamesPtr, std::unique_ptr<INamesLayout>& Out, std::string* OutError = nullptr) const override
 	{
 		if (IProfile::ResolveGNamesLayout(NamesPtr, Out))
 			return true;
