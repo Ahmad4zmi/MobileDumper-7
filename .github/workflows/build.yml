@@ -30,13 +30,12 @@ env:
 
 jobs:
   android:
-    name: Android ${{ matrix.target }} / ${{ matrix.arch }}
+    name: Android ${{ matrix.target }} / arm64
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         target: [lib, exe]
-        arch: [arm64, arm32, x86_64, x86]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -53,93 +52,20 @@ jobs:
           ndk-version: r27c
           add-to-path: false
 
-      - name: Build (${{ matrix.target }}, ${{ matrix.arch }}, ${{ env.BUILD_TYPE }})
+      - name: Build (${{ matrix.target }}, arm64, ${{ env.BUILD_TYPE }})
         env:
           ANDROID_NDK_HOME: ${{ steps.setup-ndk.outputs.ndk-path }}
         run: |
           chmod +x build.sh
-          ./build.sh --platform android --target ${{ matrix.target }} --build ${{ env.BUILD_TYPE }} --arch ${{ matrix.arch }}
+          ./build.sh --platform android --target ${{ matrix.target }} --build ${{ env.BUILD_TYPE }} --arch arm64
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MobileDumper-7-android-${{ matrix.target }}-${{ matrix.arch }}-${{ env.BUILD_TYPE }}
+          name: MobileDumper-7-android-${{ matrix.target }}-arm64-${{ env.BUILD_TYPE }}
           if-no-files-found: error
           path: |
-            builds/android/${{ matrix.target }}/${{ env.BUILD_TYPE }}/${{ matrix.arch }}/MobileDumper-7
-            builds/android/${{ matrix.target }}/${{ env.BUILD_TYPE }}/${{ matrix.arch }}/MobileDumper-7.debug
-            builds/android/${{ matrix.target }}/${{ env.BUILD_TYPE }}/${{ matrix.arch }}/libMobileDumper-7.so
-            builds/android/${{ matrix.target }}/${{ env.BUILD_TYPE }}/${{ matrix.arch }}/libMobileDumper-7.so.debug
-
-  ios-dylib:
-    name: iOS dylib
-    runs-on: macos-latest
-    if: github.event_name != 'pull_request'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install Ninja
-        run: brew install ninja
-
-      - name: Build dylib (${{ env.BUILD_TYPE }})
-        run: |
-          chmod +x build.sh
-          ./build.sh --platform ios --target dylib --build ${{ env.BUILD_TYPE }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: MobileDumper-7-ios-dylib-${{ env.BUILD_TYPE }}
-          if-no-files-found: error
-          path: |
-            builds/ios/dylib/${{ env.BUILD_TYPE }}/arm64/libMobileDumper-7.dylib
-            builds/ios/dylib/${{ env.BUILD_TYPE }}/arm64/libMobileDumper-7.dylib.dSYM
-
-  ios-theos:
-    name: iOS Theos tweak (.deb, rootless)
-    runs-on: macos-latest
-    if: github.event_name != 'pull_request'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Resolve Theos commit
-        id: theos-commit
-        run: echo "sha=$(git ls-remote https://github.com/theos/theos.git HEAD | cut -f1)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Theos
-        id: cache-theos
-        uses: actions/cache@v4
-        with:
-          path: theos
-          key: theos-${{ runner.os }}-${{ steps.theos-commit.outputs.sha }}
-
-      - name: Install Theos
-        if: steps.cache-theos.outputs.cache-hit != 'true'
-        run: git clone --recursive https://github.com/theos/theos.git theos
-
-      - name: Use GNU make
-        run: |
-          brew install make
-          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
-
-      - name: Build tweak (${{ env.BUILD_TYPE }}, rootless)
-        env:
-          THEOS: ${{ github.workspace }}/theos
-        run: |
-          chmod +x build.sh
-          ./build.sh --platform ios --target theos --build ${{ env.BUILD_TYPE }} --scheme rootless
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: MobileDumper-7-ios-theos-rootless-${{ env.BUILD_TYPE }}
-          if-no-files-found: error
-          path: |
-            Theos/packages/*.deb
-            Theos/packages/*.dSYM
+            builds/android/${{ matrix.target }}/${{ env.BUILD_TYPE }}/arm64/MobileDumper-7
+            builds/android/${{ matrix.target }}/${{ env.BUILD_TYPE }}/arm64/MobileDumper-7.debug
+            builds/android/${{ matrix.target }}/${{ env.BUILD_TYPE }}/arm64/libMobileDumper-7.so
+            builds/android/${{ matrix.target }}/${{ env.BUILD_TYPE }}/arm64/libMobileDumper-7.so.debug
