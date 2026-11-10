@@ -48,6 +48,7 @@
 #include "Profile/CustomProfiles/Shared/DeltaForce.h"
 #include "Profile/CustomProfiles/Shared/Valorant.h"
 #include "Profile/CustomProfiles/Shared/NewState.h"
+#include "Profile/CustomProfiles/Shared/Fortnite.h"
 
 inline std::vector<std::shared_ptr<IProfile>> UECustomProfiles;
 
@@ -60,6 +61,7 @@ std::vector<std::shared_ptr<IProfile>>& GetUECustomProfiles()
 		UECustomProfiles.push_back(std::make_shared<DeltaForceProfile>());
 		UECustomProfiles.push_back(std::make_shared<ValorantProfile>());
 		UECustomProfiles.push_back(std::make_shared<NewStateProfile>());
+		UECustomProfiles.push_back(std::make_shared<FortniteProfile>());
 	}
 
 	return UECustomProfiles;
