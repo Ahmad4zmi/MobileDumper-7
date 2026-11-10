@@ -1,42 +1,65 @@
-// Dumper/Profile/CustomProfiles/Shared/Fortnite.h
 #pragma once
 #include "../../IProfile.h"
+#include "../../../Engine/OffsetFinder/Layouts.h"
+#include <memory>
+#include <string>
+#include <vector>
+
+// Custom layout for Fortnite's obfuscated Chunked Fixed UObject Array
+class FFNChunkedFixedUObjectArrayLayout : public IObjectsLayout
+{
+public:
+    // Based on your IDA findings:
+    // MaxObjects (dword_19747760) was compared right before the array access.
+    // The chunk array pointer (qword_19747748) was loaded right after.
+    uint32_t Objects = 0x00;       // The pointer to the array of chunks
+    uint32_t MaxElements = 0x18;   // Adjust this if MaxObjects was at a different offset
+    uint32_t NumElements = 0x1C;
+    uint32_t MaxChunks = 0x20;
+    uint32_t NumChunks = 0x24;
+    
+    // Default constructor sets the layout
+    FFNChunkedFixedUObjectArrayLayout() = default;
+};
 
 class FortniteProfile : public IProfile
 {
 public:
-    // Automatically activate when Fortnite package name is detected
     std::vector<std::string> GetSupportedGames() const override
     {
+        // Standard package name for Fortnite Mobile
         return {"com.epicgames.fortnite"};
     }
 
-    // --- GNames (FNamePool) ---
-    // You found GetNamePool and NamePoolData in IDA, which is the GNames address
-    // If the automatic scan cannot find it, you need to override GetGNames
-    // uintptr_t GetGNames() const override { return 0x19604640; } // Example offset
-
-    // --- GObjects ---
-    // You found the encrypted qword_19747748 in StaticAllocateObject
-    // According to MobileDumper-7 specifications, if the pointer is encrypted, override DecryptGObjects
-    void DecryptGObjects(uintptr_t& ObjPtr) const override
+    // Override the layout resolver to use our custom chunked array layout
+    bool ResolveGObjectsLayout(uintptr_t ObjectsPtr, std::unique_ptr<IObjectsLayout>& Out, std::string* OutError = nullptr) const override
     {
-        // Based on your previous analysis, GObjects has undergone obfuscation
-        // The assembly you saw involves XOR and byte swapping (REV)
-        // The actual decryption logic needs to restore this process
-        // Example (pseudocode logic, actual implementation requires writing in C++):
-        // ObjPtr = __builtin_bswap64(ObjPtr ^ 0xF89E367B00000000LL);
+        Out = std::make_unique<FFNChunkedFixedUObjectArrayLayout>();
+        return true;
     }
 
-    // --- GObjects Layout ---
-    // Fortnite uses a chunked array (FChunkedFixedUObjectArray)
-    // If automatic detection fails, manually specify the layout
-    void ResolveGObjectsLayout(FGObjectsLayout& Layout) const override
+    // If MobileDumper-7 has a GObjects getter that can be overridden, use it here.
+    // If the compiler complains that GetGObjects() is not a virtual function in IProfile, 
+    // comment this entire function out and rely on the static offset.
+    /*
+    uintptr_t GetGObjects() const override
     {
-        Layout.ObjectsOffset = 0x00;       // Points to the array of chunk pointers
-        Layout.MaxElementsOffset = 0x10;   // MaxObjects you saw in IDA is at +0x10
-        Layout.NumElementsOffset = 0x14;   // Usually adjacent to MaxElements
-        Layout.MaxChunksOffset = 0x18;
-        Layout.NumChunksOffset = 0x1C;
+        // If you need to hardcode the address, return it here.
+        // However, the dumper usually finds it automatically via the "NewObject" string or signature.
+        return 0; 
     }
+    */
+    
+    // Override string decryption if Fortnite uses custom string obfuscation.
+    // Based on your IDA screenshots, Fortnite uses standard FNamePool, so we leave this empty.
+    
+    // Override object index decryption (Fortnite XORs the index)
+    // Based on your IDA: v208 = __builtin_bswap32(*(_DWORD *)(v207 + 12) ^ 0x7C85CAEA);
+    /*
+    uint32_t DecryptObjectIndex(uint32_t Index) const override
+    {
+        // Implementation depends on how the dumper passes the index.
+        // Usually handled internally by the dumper if you provide the right layout.
+    }
+    */
 };
