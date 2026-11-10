@@ -1,26 +1,6 @@
 #pragma once
 #include "../../IProfile.h"
-#include "../../../Engine/OffsetFinder/Layouts.h"
-#include <memory>
-#include <string>
-#include <vector>
-
-// Custom layout for Fortnite's obfuscated Chunked Fixed UObject Array
-class FFNChunkedFixedUObjectArrayLayout : public IObjectsLayout
-{
-public:
-    // Based on your IDA findings:
-    // MaxObjects (dword_19747760) was compared right before the array access.
-    // The chunk array pointer (qword_19747748) was loaded right after.
-    uint32_t Objects = 0x00;       // The pointer to the array of chunks
-    uint32_t MaxElements = 0x18;   // Adjust this if MaxObjects was at a different offset
-    uint32_t NumElements = 0x1C;
-    uint32_t MaxChunks = 0x20;
-    uint32_t NumChunks = 0x24;
-    
-    // Default constructor sets the layout
-    FFNChunkedFixedUObjectArrayLayout() = default;
-};
+#include "../../Engine/OffsetFinder/DecryptCallbacks.h"
 
 class FortniteProfile : public IProfile
 {
@@ -31,35 +11,37 @@ public:
         return {"com.epicgames.fortnite"};
     }
 
-    // Override the layout resolver to use our custom chunked array layout
-    bool ResolveGObjectsLayout(uintptr_t ObjectsPtr, std::unique_ptr<IObjectsLayout>& Out, std::string* OutError = nullptr) const override
+    void OverrideDecryptCallbacks(FDecryptCallbacks& Callbacks) const override
     {
-        Out = std::make_unique<FFNChunkedFixedUObjectArrayLayout>();
-        return true;
-    }
+        // ---------------------------------------------------------
+        // 1. GObjects Decryption
+        // From IDA: __builtin_bswap64(qword_19747748 ^ 0xF89E367B00000000LL)
+        // ---------------------------------------------------------
+        Callbacks.Statics.GObjects = [](const FDecryptContext<uintptr_t>& Context) -> uintptr_t
+        {
+            // XOR the raw pointer, then ByteSwap (Bswap) it
+            uintptr_t Decrypted = Context.RawValue ^ 0xF89E367B00000000ULL;
+            return __builtin_bswap64(Decrypted);
+        };
 
-    // If MobileDumper-7 has a GObjects getter that can be overridden, use it here.
-    // If the compiler complains that GetGObjects() is not a virtual function in IProfile, 
-    // comment this entire function out and rely on the static offset.
-    /*
-    uintptr_t GetGObjects() const override
-    {
-        // If you need to hardcode the address, return it here.
-        // However, the dumper usually finds it automatically via the "NewObject" string or signature.
-        return 0; 
+        // ---------------------------------------------------------
+        // 2. UObject Index Decryption
+        // From IDA: __builtin_bswap32(*(_DWORD *)(v207 + 12) ^ 0x7C85CAEA)
+        // ---------------------------------------------------------
+        Callbacks.UObject.Index = [](const FDecryptContext<uintptr_t>& Context) -> uintptr_t
+        {
+            // Read the 32-bit integer at the address, XOR it, then Bswap it
+            uint32_t RawIndex = GMemory->Read<uint32_t>(Context.Address);
+            uint32_t Decrypted = RawIndex ^ 0x7C85CAEA;
+            return static_cast<uintptr_t>(__builtin_bswap32(Decrypted));
+        };
+
+        // ---------------------------------------------------------
+        // 3. MaxObjects Decryption (Optional but recommended)
+        // From IDA: __builtin_bswap32(dword_19747760 ^ 0xF78656B)
+        // ---------------------------------------------------------
+        // If the MaxObjects value is also encrypted, you can use the
+        // layout decryption hooks if provided, or rely on the chunked layout.
+        // For now, we assume the default ChunkedFixedUObjectArray layout works.
     }
-    */
-    
-    // Override string decryption if Fortnite uses custom string obfuscation.
-    // Based on your IDA screenshots, Fortnite uses standard FNamePool, so we leave this empty.
-    
-    // Override object index decryption (Fortnite XORs the index)
-    // Based on your IDA: v208 = __builtin_bswap32(*(_DWORD *)(v207 + 12) ^ 0x7C85CAEA);
-    /*
-    uint32_t DecryptObjectIndex(uint32_t Index) const override
-    {
-        // Implementation depends on how the dumper passes the index.
-        // Usually handled internally by the dumper if you provide the right layout.
-    }
-    */
 };
