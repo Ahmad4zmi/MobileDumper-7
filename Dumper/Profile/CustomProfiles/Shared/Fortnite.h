@@ -17,17 +17,10 @@ public:
     }
 
     uintptr_t GetGObjects() const override
-    {
-        uintptr_t Base = MD7::Globals::GMemory->GetModuleInfo("libUnreal.so").GetBase();
-        // qword_19747748 is the chunks base pointer, subtract to get FUObjectArray struct base
-        return Base + 0x19747748 - 0xD8;
-    }
-
-    void OverrideDecryptCallbacks(FDecryptCallbacks& Callbacks) const override
 {
-    Callbacks.ChunkedObjects.NumElements = [](const FDecryptContext<int32>& Ctx) -> int32
-    {
-        return (int32)__builtin_bswap32((uint32_t)Ctx.RawValue ^ 0xB62DEEC3u);
-    };
+    uintptr_t Base = MD7::Globals::GMemory->GetModuleInfo("libUnreal.so").GetBase();
+    return Base + 0x192C6040;
 }
+
+// Remove OverrideDecryptCallbacks entirely
 };
