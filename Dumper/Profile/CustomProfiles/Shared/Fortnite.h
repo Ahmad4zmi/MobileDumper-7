@@ -24,11 +24,10 @@ public:
     }
 
     void OverrideDecryptCallbacks(FDecryptCallbacks& Callbacks) const override
+{
+    Callbacks.ChunkedObjects.NumElements = [](const FDecryptContext<int32>& Ctx) -> int32
     {
-        // NumElements is bswap-obfuscated with XOR key 0xB62DEEC3
-        Callbacks.ChunkedObjects.NumElements = [](int32 Value, uintptr_t) -> int32
-        {
-            return (int32)__builtin_bswap32((uint32_t)Value ^ 0xB62DEEC3u);
-        };
-    }
+        return (int32)__builtin_bswap32((uint32_t)Ctx.RawValue ^ 0xB62DEEC3u);
+    };
+}
 };
