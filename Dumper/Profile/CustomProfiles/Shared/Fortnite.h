@@ -11,14 +11,16 @@ public:
     }
 
     uintptr_t GetGNames() const override
-    {
-        uintptr_t Base = MD7::Globals::GMemory->GetModuleInfo("libUnreal.so").GetBase();
-        return Base + 0x19604640;
-    }
+{
+    uintptr_t Base = MD7::Globals::GMemory->GetModuleInfo("libUnreal.so").GetBase();
+    uintptr_t Ptr = MD7::Globals::GMemory->Read<uintptr_t>(Base + 0x19604640);
+    return Ptr;
+}
 
     uintptr_t GetGObjects() const override
-    {
-        uintptr_t Base = MD7::Globals::GMemory->GetModuleInfo("libUnreal.so").GetBase();
-        return Base + 0x19747748;
-    }
+{
+    uintptr_t Base = MD7::Globals::GMemory->GetModuleInfo("libUnreal.so").GetBase();
+    uintptr_t Ptr = MD7::Globals::GMemory->Read<uintptr_t>(Base + 0x19747748);
+    return Ptr;
+}
 };
