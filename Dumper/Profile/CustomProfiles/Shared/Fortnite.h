@@ -13,8 +13,6 @@
 //   Len          : (header >> 6) ^ 0x3CB
 //   Wide         : header & 1
 //   String       : NameEntry + 2, stride 2
-//
-// NOTE: re-derive EOR constants and offsets after every Fortnite update.
 
 #pragma once
 #include "../../IProfile.h"
@@ -29,13 +27,11 @@ public:
         return {"com.epicgames.fortnite"};
     }
 
-    // GUObjectArray — "unable to add more objects" is stripped; hand it directly.
     uintptr_t GetGObjects() const override
     {
         return MD7::Globals::GMemory->GetUnrealModule().GetBase() + 0x19EEE6E8;
     }
 
-    // NamePool — normal anchors stripped; hand it directly.
     uintptr_t GetGNames() const override
     {
         return MD7::Globals::GMemory->GetUnrealModule().GetBase() + 0x19F34600;
@@ -43,23 +39,21 @@ public:
 
     void OverrideDecryptCallbacks(FDecryptCallbacks& Callbacks) const override
     {
-        // Objects chunk pointer decrypt
-        // EOR X8, 0x014A7AF1, X8,ROR#38  then MUL by 0xFCF860ABC8EC0E17
-        // from VERIFYGC @ 0xC67F0DC / 0xC67F0F0
+        // Objects chunk pointer — EOR X8, 0x014A7AF1, X8,ROR#38 / MUL 0xFCF860ABC8EC0E17
+        // VERIFYGC @ 0xC67F0DC / 0xC67F0F0
         Callbacks.ChunkedObjects.Objects = [](const FDecryptContext<uintptr_t>& Ctx) -> uintptr_t
         {
-            uint64_t v = static_cast<uint64_t>(Ctx.Value);
-            v = (v >> 38) | (v << (64 - 38));  // ROR64(v, 38)
+            uint64_t v = static_cast<uint64_t>(Ctx.RawValue);
+            v = (v >> 38) | (v << (64 - 38));
             return static_cast<uintptr_t>((0x014A7AF1ULL ^ v) * 0xFCF860ABC8EC0E17ULL);
         };
 
-        // NumElements decrypt
-        // EOR W8, 0x1130A328, W8,ROR#5  then MADD W8, W8, 0x6977DD63, 0xFC3B1B46
-        // from VERIFYGC @ 0xC67F094 / 0xC67F0A8
+        // NumElements — EOR W8, 0x1130A328, W8,ROR#5 / MADD 0x6977DD63, 0xFC3B1B46
+        // VERIFYGC @ 0xC67F094 / 0xC67F0A8
         Callbacks.ChunkedObjects.NumElements = [](const FDecryptContext<int32_t>& Ctx) -> int32_t
         {
-            uint32_t v = static_cast<uint32_t>(Ctx.Value);
-            v = (v >> 5) | (v << (32 - 5));    // ROR32(v, 5)
+            uint32_t v = static_cast<uint32_t>(Ctx.RawValue);
+            v = (v >> 5) | (v << (32 - 5));
             v = (0x1130A328u ^ v) * 0x6977DD63u + 0xFC3B1B46u;
             return static_cast<int32_t>(v);
         };
