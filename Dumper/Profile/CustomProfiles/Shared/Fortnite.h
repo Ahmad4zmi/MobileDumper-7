@@ -13,39 +13,38 @@ public:
     uintptr_t GetGNames() const override
     {
         uintptr_t Base = MD7::Globals::GMemory->GetModuleInfo("libUnreal.so").GetBase();
-        return Base + 0x19604640;
+        return Base + 0x19F34600;
     }
 
     uintptr_t GetGObjects() const override
     {
         uintptr_t Base = MD7::Globals::GMemory->GetModuleInfo("libUnreal.so").GetBase();
-        return Base + 0x19747748;
+        return Base + 0x1A077730;
     }
 
     void OverrideDecryptCallbacks(FDecryptCallbacks& Callbacks) const override
     {
-        // Object pointer has flag bits packed in upper bits — mask them off
+        Callbacks.ChunkedObjects.Objects = [](const FDecryptContext<uintptr_t>& Ctx) -> uintptr_t
+        {
+            uint64_t r = __builtin_rotateright64(Ctx.RawValue, 38) ^ 0x14A7AF1ULL;
+            return 0xFCF860ABC8EC0E17ULL * r + 0x7A4BC24E320683F0ULL;
+        };
+
+        Callbacks.ChunkedObjects.NumElements = [](const FDecryptContext<int32>& Ctx) -> int32
+        {
+            uint32_t r = __builtin_rotateright32((uint32_t)Ctx.RawValue, 5) ^ 0x113A328u;
+            return (int32)(1769463139u * r) - 63235258;
+        };
+
+        Callbacks.ChunkedObjects.MaxElements = [](const FDecryptContext<int32>& Ctx) -> int32
+        {
+            uint32_t r = __builtin_rotateright32((uint32_t)Ctx.RawValue, 5) ^ 0x113A328u;
+            return (int32)(1769463139u * r) - 1314885808;
+        };
+
         Callbacks.ChunkedObjects.FUObjectItem.Object = [](const FDecryptContext<uintptr_t>& Ctx) -> uintptr_t
         {
             return Ctx.RawValue & ~0x3FFF00000000ULL;
-        };
-
-        // NumElements XOR-obfuscated with bswap
-        Callbacks.ChunkedObjects.NumElements = [](const FDecryptContext<int32>& Ctx) -> int32
-        {
-            return (int32)__builtin_bswap32((uint32_t)Ctx.RawValue ^ 0xB62DEEC3u);
-        };
-
-        // MaxElements same obfuscation pattern
-        Callbacks.ChunkedObjects.MaxElements = [](const FDecryptContext<int32>& Ctx) -> int32
-        {
-            return (int32)__builtin_bswap32((uint32_t)Ctx.RawValue ^ 0xF78656Bu);
-        };
-
-        // Chunks pointer XOR-obfuscated with bswap64
-        Callbacks.ChunkedObjects.Objects = [](const FDecryptContext<uintptr_t>& Ctx) -> uintptr_t
-        {
-            return __builtin_bswap64(Ctx.RawValue ^ 0xF89E367B00000000ULL);
         };
     }
 };
