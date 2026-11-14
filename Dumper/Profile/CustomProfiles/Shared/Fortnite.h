@@ -1,14 +1,21 @@
 // Dumper/Profile/CustomProfiles/Shared/Fortnite.h
 // Fortnite Mobile — Android v43.10.0-60118918
-// libUnreal.so
+// libUnreal.so (IDA analysis)
 //
-//  GUObjectArray : base + 0x19EEE6E8
-//  GObjects ptr  : GUObjectArray + 0x89148  (encrypted, ChunkedObjects.Objects)
-//  NumElements   : GUObjectArray + 0x89150  (encrypted, ChunkedObjects.NumElements)
-//  NamePool      : base + 0x19F34600
+// GUObjectArray  : offset 0x19EEE6E8  (qword_19EEE6E8, `this` in VERIFYGC @ 0xC67F02C)
+// GObjects ptr   : encrypted at GUObjectArray+0x89148 (qword_1A077730)
+//   decrypt      : (0x014A7AF1 ^ ROR64(raw, 38)) * 0xFCF860ABC8EC0E17
+// NumElements    : encrypted at GUObjectArray+0x89150 (dword_1A077738)
+//   decrypt      : (0x1130A328 ^ ROR32(raw, 5)) * 0x6977DD63 + 0xFC3B1B46
+// ObjectItemSize : 0x18
+// NamePool       : offset 0x19F34600  (dword_19F34600, ADRL X20 @ 0x66B2398)
+//   Blocks offset: 0xAB80  (MOV W9, #0xAB80 @ 0x66B23C0)
+//   Len          : (header >> 6) ^ 0x3CB
+//   Wide         : header & 1
+//   String       : NameEntry + 2, stride 2
 //
-// NOTE: Epic rotates obfuscation keys every minor update. Re-derive the
-//       EOR/MUL constants from VERIFYGC (0xC67F02C) each patch.
+// NOTE: Epic re-keys obfuscation constants every update. After any patch
+//       re-derive the EOR constants and global offsets before rebuilding.
 
 #pragma once
 #include "../../IProfile.h"
@@ -23,60 +30,57 @@ public:
         return {"com.epicgames.fortnite"};
     }
 
-    // Fixed GObjects base (GUObjectArray struct address).
-    // MobileDumper reads Objects/NumElements from inside it via
-    // ResolveGObjectsLayout + the ChunkedObjects decrypt hooks.
+    // -------------------------------------------------------------------------
+    // GUObjectArray — stripped "unable to add more objects", hand it directly.
+    // GetGObjects() must return the absolute runtime address of the array struct.
+    // -------------------------------------------------------------------------
     uintptr_t GetGObjects() const override
     {
-        // NOTE: match the memory-access idiom used by the other profiles in
-        // this repo (e.g. `GMemory->GetBase()`, `Mem->GetBase()`, ...).
-        return GMemory->GetBase() + 0x19EEE6E8;
+        return GMemory->GetUnrealModule().GetBase() + 0x19EEE6E8;
     }
 
+    // Decrypt the Objects chunk-array pointer.
+    // Pattern from VERIFYGC @ 0xC67F0DC:
+    //   EOR X8, 0x014A7AF1, X8,ROR#38
+    //   MUL X8, X8, 0xFCF860ABC8EC0E17
+    void DecryptGObjects(uintptr_t& Value) const override
+    {
+        uint64_t v = static_cast<uint64_t>(Value);
+        v = (v >> 38) | (v << (64 - 38));          // ROR64(v, 38)
+        Value = static_cast<uintptr_t>((0x014A7AF1ULL ^ v) * 0xFCF860ABC8EC0E17ULL);
+    }
+
+    // -------------------------------------------------------------------------
+    // NamePool — stripped normal anchors, hand it directly.
+    // -------------------------------------------------------------------------
     uintptr_t GetGNames() const override
     {
-        return GMemory->GetBase() + 0x19F34600;
+        return GMemory->GetUnrealModule().GetBase() + 0x19F34600;
     }
 
-    // -------------------------------------------------------------------------
-    // Decryption hooks — matches the current FDecryptCallbacks signatures:
-    //   ChunkedObjects.Objects     : (uintptr_t Value, uintptr_t Address) -> uintptr_t
-    //   ChunkedObjects.NumElements : (int32     Value, uintptr_t Address) -> int32
-    // -------------------------------------------------------------------------
+    // OverrideDecryptCallbacks — NumElements encryption lives here.
+    // Pattern from VERIFYGC @ 0xC67F094 / 0xC67F0A8:
+    //   EOR W8, 0x1130A328, W8,ROR#5
+    //   MADD W8, W8, 0x6977DD63, 0xFC3B1B46
     void OverrideDecryptCallbacks(FDecryptCallbacks& Callbacks) const override
     {
-        // ---- VARIANT A: exact EOR+rotate+MUL from your IDA notes -------------
-        // Use this if VERIFYGC really does `EOR K1, V,ROR#38` before the MUL.
-        // Requires a rotate helper from Utils (names may differ per repo:
-        //   Utils::Memory::Ror64 / RotateRight64 / ror64 / ...).
-        Callbacks.ChunkedObjects.Objects = [](uintptr_t Value, uintptr_t /*Addr*/)
+        Callbacks.ChunkedObjects.NumElements = [](int32_t Value, uintptr_t) -> int32_t
         {
-            // (0x014A7AF1 ^ ROR64(Value, 38)) * 0xFCF860ABC8EC0E17
-            const uint64_t ror38 = (Value >> 38) | (Value << (64 - 38));
-            return (0x014A7AF1ULL ^ ror38) * 0xFCF860ABC8EC0E17ULL;
+            uint32_t v = static_cast<uint32_t>(Value);
+            v = (v >> 5) | (v << (32 - 5));        // ROR32(v, 5)
+            v = (0x1130A328u ^ v) * 0x6977DD63u + 0xFC3B1B46u;
+            return static_cast<int32_t>(v);
         };
 
-        Callbacks.ChunkedObjects.NumElements = [](int32 Value, uintptr_t /*Addr*/)
-        {
-            // (0x1130A328 ^ ROR32(Value, 5)) * 0x6977DD63 + 0xFC3B1B46
-            const uint32_t v    = static_cast<uint32_t>(Value);
-            const uint32_t ror5 = (v >> 5) | (v << (32 - 5));
-            const uint32_t r    = (0x1130A328u ^ ror5) * 0x6977DD63u + 0xFC3B1B46u;
-            return static_cast<int32>(r);
-        };
-
-        // ---- VARIANT B: linear A*V - B shape (like the old example) ----------
-        // Use this ONLY after re-deriving A/B from the current VERIFYGC.
-        // The constants below are placeholders — they will NOT work.
+        // Objects pointer decrypt is already in DecryptGObjects above;
+        // only needed here if the auto-path calls this callback instead.
+        // Uncomment if names or objects come back empty:
         //
-        // Callbacks.ChunkedObjects.Objects = [](uintptr_t Value, uintptr_t)
+        // Callbacks.ChunkedObjects.Objects = [](uintptr_t Value, uintptr_t) -> uintptr_t
         // {
-        //     return (0xAAAAAAAAAAAAAAAAULL * Value - 0xBBBBBBBBBBBBBBBBULL);
-        // };
-        // Callbacks.ChunkedObjects.NumElements = [](int32 Value, uintptr_t)
-        // {
-        //     return static_cast<int32>(0xCCCCCCCC * static_cast<uint32_t>(Value)
-        //                               - 0xDDDDDDDD);
+        //     uint64_t v = static_cast<uint64_t>(Value);
+        //     v = (v >> 38) | (v << (64 - 38));
+        //     return static_cast<uintptr_t>((0x014A7AF1ULL ^ v) * 0xFCF860ABC8EC0E17ULL);
         // };
     }
 };
